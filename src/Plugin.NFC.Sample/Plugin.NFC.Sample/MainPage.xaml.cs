@@ -14,6 +14,22 @@ namespace NFCSample
 
 		NFCNdefTypeFormat _type;
 		bool _makeReadOnly = false;
+		bool _isDeviceiOS = false;
+
+		/// <summary>
+		/// Property that tracks whether the Android device is still listening,
+		/// so it can indicate that to the user.
+		/// </summary>
+		public bool DeviceIsListening
+		{
+			get => _deviceIsListening && NfcIsEnabled;
+			set
+			{
+				_deviceIsListening = value;
+				OnPropertyChanged(nameof(DeviceIsListening));
+			}
+		}
+		private bool _deviceIsListening;
 
 		private bool _nfcIsEnabled;
 		public bool NfcIsEnabled {
@@ -46,13 +62,12 @@ namespace NFCSample
 				if (!NfcIsEnabled)
 					await ShowAlert("NFC is disabled");
 
+				if (Device.RuntimePlatform == Device.iOS)
+					_isDeviceiOS = true;
+
 				SubscribeEvents();
 
-				if (Device.RuntimePlatform != Device.iOS)
-				{
-					// Start NFC tag listening manually
-					CrossNFC.Current.StartListening();
-				}
+				await StartListeningIfNotiOS();
 			}
 		}
 
@@ -70,7 +85,7 @@ namespace NFCSample
 			CrossNFC.Current.OnTagDiscovered += Current_OnTagDiscovered;
 			CrossNFC.Current.OnNfcStatusChanged += Current_OnNfcStatusChanged;
 
-			if (Device.RuntimePlatform == Device.iOS)
+			if (_isDeviceiOS)
 				CrossNFC.Current.OniOSReadingSessionCancelled += Current_OniOSReadingSessionCancelled;
 		}
 
@@ -81,7 +96,7 @@ namespace NFCSample
 			CrossNFC.Current.OnTagDiscovered -= Current_OnTagDiscovered;
 			CrossNFC.Current.OnNfcStatusChanged -= Current_OnNfcStatusChanged;
 
-			if (Device.RuntimePlatform == Device.iOS)
+			if (_isDeviceiOS)
 				CrossNFC.Current.OniOSReadingSessionCancelled -= Current_OniOSReadingSessionCancelled;
 		}
 
@@ -117,6 +132,7 @@ namespace NFCSample
 				var first = tagInfo.Records[0];
 				await ShowAlert(GetMessage(first), title);
 			}
+			DeviceIsListening = false;
 		}
 
 		void Current_OniOSReadingSessionCancelled(object sender, EventArgs e) => Debug("User has cancelled NFC Session");
@@ -194,6 +210,7 @@ namespace NFCSample
 			{
 				await ShowAlert(ex.Message);
 			}
+			DeviceIsListening = false;
 		}
 
 		async void Button_Clicked_StartListening(object sender, System.EventArgs e)
@@ -261,5 +278,33 @@ namespace NFCSample
 		void Debug(string message) => System.Diagnostics.Debug.WriteLine(message);
 
 		Task ShowAlert(string message, string title = null) => DisplayAlert(string.IsNullOrWhiteSpace(title) ? ALERT_TITLE : title, message, "Cancel");
+
+		/// <summary>
+		/// Task to start listening for NFC tags if the user's device platform is not iOS
+		/// </summary>
+		/// <returns>Task to be performed</returns>
+		async Task StartListeningIfNotiOS()
+		{
+			if (_isDeviceiOS)
+				return;
+			await BeginListening();
+		}
+
+		/// <summary>
+		/// Task to safely start listening for NFC Tags
+		/// </summary>
+		/// <returns>The task to be performed</returns>
+		async Task BeginListening()
+		{
+			DeviceIsListening = true;
+			try
+			{
+				CrossNFC.Current.StartListening();
+			}
+			catch (Exception ex)
+			{
+				await ShowAlert(ex.Message);
+			}
+		}
 	}
 }
